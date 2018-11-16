@@ -428,7 +428,7 @@ endfunction()
 #			)
 #
 #	Input:
-#		BOARD 		: board
+#		BOARD		: board
 #
 #	Output:
 #		OUT	: the target list
@@ -440,9 +440,10 @@ function(px4_os_prebuild_targets)
 	px4_parse_function_args(
 			NAME px4_os_prebuild_targets
 			ONE_VALUE OUT BOARD
-			REQUIRED OUT BOARD
+			REQUIRED OUT
 			ARGN ${ARGN})
 
-	add_library(${OUT} INTERFACE)
-	add_dependencies(${OUT} DEPENDS uorb_headers)
+	add_library(prebuild_targets INTERFACE)
+	add_dependencies(prebuild_targets DEPENDS uorb_headers)
+
 endfunction()

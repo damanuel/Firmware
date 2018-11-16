@@ -59,3 +59,7 @@ px4_add_module(
 		git_ecl
 		ecl_geo
 	)
+
+if(PX4_TESTING)
+	add_subdirectory(commander_tests)
+endif()

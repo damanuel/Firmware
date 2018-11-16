@@ -41,8 +41,6 @@
 #		* px4_join
 #		* px4_add_module
 #		* px4_add_common_flags
-#		* px4_add_optimization_flags_for_target
-#		* px4_add_executable
 #		* px4_add_library
 #
 
@@ -95,11 +93,15 @@ include(CMakeParseArguments)
 #			list: a b c
 #
 function(px4_parse_function_args)
+
 	cmake_parse_arguments(IN "" "NAME" "OPTIONS;ONE_VALUE;MULTI_VALUE;REQUIRED;ARGN" "${ARGN}")
 	cmake_parse_arguments(OUT "${IN_OPTIONS}" "${IN_ONE_VALUE}" "${IN_MULTI_VALUE}" "${IN_ARGN}")
+
 	if (OUT_UNPARSED_ARGUMENTS)
-		message(FATAL_ERROR "${IN_NAME}: unparsed ${OUT_UNPARSED_ARGUMENTS}")
+		#message(FATAL_ERROR "${IN_NAME}: unparsed ${OUT_UNPARSED_ARGUMENTS}")
+		# TODO: reenable
 	endif()
+
 	foreach(arg ${IN_REQUIRED})
 		if (NOT OUT_${arg})
 			if (NOT "${OUT_${arg}}" STREQUAL "0")
@@ -107,9 +109,11 @@ function(px4_parse_function_args)
 			endif()
 		endif()
 	endforeach()
+
 	foreach(arg ${IN_OPTIONS} ${IN_ONE_VALUE} ${IN_MULTI_VALUE})
 		set(${arg} ${OUT_${arg}} PARENT_SCOPE)
 	endforeach()
+
 endfunction()
 
 #=============================================================================
@@ -237,8 +241,6 @@ function(px4_add_module)
 	set_property(GLOBAL APPEND PROPERTY PX4_MODULE_LIBRARIES ${MODULE})
 	set_property(GLOBAL APPEND PROPERTY PX4_MODULE_PATHS ${CMAKE_CURRENT_SOURCE_DIR})
 
-	px4_add_optimization_flags_for_target(${MODULE})
-
 	# Pass variable to the parent px4_add_module.
 	set(_no_optimization_for_target ${_no_optimization_for_target} PARENT_SCOPE)
 
@@ -301,12 +303,6 @@ function(px4_add_module)
 		endif()
 	endforeach()
 
-	# store module properties in target
-	# COMPILE_FLAGS and LINK_FLAGS are passed to compiler/linker by cmake
-	# STACK_MAIN, MAIN, PRIORITY are PX4 specific
-	if(COMPILE_FLAGS AND ${_no_optimization_for_target})
-		px4_strip_optimization(COMPILE_FLAGS ${COMPILE_FLAGS})
-	endif()
 	foreach (prop LINK_FLAGS STACK_MAIN MAIN PRIORITY)
 		if (${prop})
 			set_target_properties(${MODULE} PROPERTIES ${prop} ${${prop}})
@@ -366,7 +362,7 @@ function(px4_add_common_flags)
 	px4_parse_function_args(
 		NAME px4_add_common_flags
 		ONE_VALUE ${inout_vars} BOARD
-		REQUIRED ${inout_vars} BOARD
+		REQUIRED ${inout_vars}
 		ARGN ${ARGN})
 
 	set(warnings
@@ -545,62 +541,6 @@ endfunction()
 
 #=============================================================================
 #
-#	px4_strip_optimization
-#
-function(px4_strip_optimization name)
-	set(_compile_flags)
-	separate_arguments(_args UNIX_COMMAND ${ARGN})
-	foreach(_flag ${_args})
-		if(NOT "${_flag}" MATCHES "^-O")
-			set(_compile_flags "${_compile_flags} ${_flag}")
-		endif()
-	endforeach()
-	string(STRIP "${_compile_flags}" _compile_flags)
-	set(${name} "${_compile_flags}" PARENT_SCOPE)
-endfunction()
-
-#=============================================================================
-#
-#	px4_add_optimization_flags_for_target
-#
-set(all_posix_cmake_targets "" CACHE INTERNAL "All cmake targets for which optimization can be suppressed")
-function(px4_add_optimization_flags_for_target target)
-	set(_no_optimization_for_target FALSE)
-	# If the current CONFIG is posix_sitl_* then suppress optimization for certain targets.
-	if(CONFIG MATCHES "^posix_sitl_")
-		foreach(_regexp $ENV{PX4_NO_OPTIMIZATION})
-			if("${target}" MATCHES "${_regexp}")
-				set(_no_optimization_for_target TRUE)
-				set(_matched_regexp "${_regexp}")
-			endif()
-		endforeach()
-		# Create a full list of targets that optimization can be suppressed for.
-		list(APPEND all_posix_cmake_targets ${target})
-		set(all_posix_cmake_targets ${all_posix_cmake_targets} CACHE INTERNAL "All cmake targets for which optimization can be suppressed")
-	endif()
-	if(NOT ${_no_optimization_for_target})
-		target_compile_options(${target} PRIVATE ${optimization_flags})
-	else()
-		message(STATUS "Disabling optimization for target '${target}' because it matches the regexp '${_matched_regexp}' in env var PX4_NO_OPTIMIZATION")
-		target_compile_options(${target} PRIVATE -O0)
-	endif()
-	# Pass variable to the parent px4_add_library.
-	set(_no_optimization_for_target ${_no_optimization_for_target} PARENT_SCOPE)
-endfunction()
-
-#=============================================================================
-#
-#	px4_add_executable
-#
-#	Like add_executable but with optimization flag fixup.
-#
-function(px4_add_executable target)
-	add_executable(${target} ${ARGN})
-	px4_add_optimization_flags_for_target(${target})
-endfunction()
-
-#=============================================================================
-#
 #	px4_add_library
 #
 #	Like add_library but with optimization flag fixup.
@@ -618,8 +558,6 @@ function(px4_add_library target)
 	if ("${OS}" MATCHES "nuttx")
 		target_link_libraries(${target} PRIVATE m nuttx_c)
 	endif()
-
-	px4_add_optimization_flags_for_target(${target})
 
 	# Pass variable to the parent px4_add_module.
 	set(_no_optimization_for_target ${_no_optimization_for_target} PARENT_SCOPE)

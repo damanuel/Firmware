@@ -132,13 +132,55 @@ define_property(GLOBAL PROPERTY PX4_MODULE_PATHS
 # configuration
 #
 
-set(CONFIG "posix_sitl_default" CACHE STRING "desired configuration")
+set(CONFIG "px4_fmu-v2_default" CACHE STRING "desired configuration")
+
+# boards/<VENDOR>/<MODEL>/<LABEL>.cmake
+#  <VENDOR>_<MODEL>_<CONFIG>
+# BOARD=<VENDOR><MODEL>
+#  OS set by board config
 
 string(REPLACE "_" ";" config_args ${CONFIG})
-list(GET config_args 0 OS)
-list(GET config_args 1 BOARD)
-list(GET config_args 2 LABEL)
 
+list(LENGTH config_args config_args_length)
+
+if (${config_args_length} EQUAL 4)
+	# <OS>_<VENDOR>_<MODEL>_<LABEL>
+	list(GET config_args 0 OS)
+	list(GET config_args 1 VENDOR)
+	list(GET config_args 2 MODEL)
+	list(GET config_args 3 LABEL)
+elseif (${config_args_length} EQUAL 3)
+	# <VENDOR>_<MODEL>_<LABEL>
+	list(GET config_args 0 VENDOR)
+	list(GET config_args 1 MODEL)
+	list(GET config_args 2 LABEL)
+
+	# find os?
+	set(OS "nuttx")
+elseif (${config_args_length} EQUAL 2)
+	# <VENDOR>_<MODEL>
+	list(GET config_args 0 VENDOR)
+	list(GET config_args 1 MODEL)
+
+	set(LABEL "default")
+else()
+	message(FATAL_ERROR "invalid config ${CONFIG}")
+	# TODO: list valid configs, or how to use PX4_CONFIG_FILE
+endif()
+
+set(BOARD ${VENDOR}${MODEL})
+
+include(px4_add_board)
+
+# TODO: build list of all configs in tree (platforms/${OS}/boards/*)
+#  match first CONFIG found in platforms/${OS}/boards/*
+# support completely external configs (PX4_CONFIG_FILE=path/to/config-file.cmake)
+set(config_module_list)
+include(platforms/${OS}/boards/${VENDOR}/${MODEL}/${LABEL}.cmake)
+
+set(target_name "${OS}_${BOARD}_${LABEL}")
+
+# external modules
 set(EXTERNAL_MODULES_LOCATION "" CACHE STRING "External modules source location")
 
 if (NOT EXTERNAL_MODULES_LOCATION STREQUAL "")
@@ -148,7 +190,6 @@ endif()
 set_property(GLOBAL PROPERTY PX4_MODULE_CONFIG_FILES)
 
 include(platforms/${OS}/cmake/px4_impl_os.cmake)
-include(configs/${CONFIG})
 list(APPEND CMAKE_MODULE_PATH ${PX4_SOURCE_DIR}/platforms/${OS}/cmake)
 
 # CMake build type (Debug Release RelWithDebInfo MinSizeRel Coverage)
@@ -216,17 +257,11 @@ endif()
 set(px4_required_interface
 	px4_os_prebuild_targets
 	px4_os_add_flags
+	px4_add_board
 	)
 foreach(cmd ${px4_required_interface})
 	if (NOT COMMAND ${cmd})
 		message(FATAL_ERROR "${CONFIG} must implement ${cmd}")
-	endif()
-endforeach()
-
-set(px4_required_config config_module_list)
-foreach(conf ${px4_required_config})
-	if (NOT DEFINED ${conf})
-		message(FATAL_ERROR "cmake/${CONFIG} must define ${conf}")
 	endif()
 endforeach()
 
@@ -302,11 +337,6 @@ execute_process(COMMAND ${CMAKE_CXX_COMPILER} --version
 		)
 STRING(REGEX MATCH "[^\n]*" cxx_compiler_version_short ${cxx_compiler_version})
 message(STATUS "C++ compiler: ${cxx_compiler_version_short}")
-
-#=============================================================================
-# external libraries
-#
-px4_os_prebuild_targets(OUT prebuild_targets BOARD ${BOARD})
 
 #=============================================================================
 # build flags
@@ -390,6 +420,7 @@ add_subdirectory(src/modules/uORB EXCLUDE_FROM_ALL) # TODO: platform layer
 add_subdirectory(src/drivers/boards EXCLUDE_FROM_ALL)
 
 foreach(module ${config_module_list})
+	#message(STATUS "adding src/${module}")
 	add_subdirectory(src/${module})
 endforeach()
 
@@ -399,20 +430,6 @@ target_link_libraries(parameters_interface INTERFACE parameters)
 
 # firmware added last to generate the builtin for included modules
 add_subdirectory(platforms/${OS})
-
-#=============================================================================
-# generate custom target to print for all executable and module cmake targets
-#
-if (all_posix_cmake_targets)
-	list(SORT all_posix_cmake_targets)
-	px4_join(OUT posix_cmake_target_list LIST ${all_posix_cmake_targets} GLUE "\\n")
-	add_custom_target(list_cmake_targets
-		COMMAND sh -c "printf \"${posix_cmake_target_list}\\n\""
-		COMMENT "List of cmake targets that can be matched by PX4_NO_OPTIMIZATION:"
-		VERBATIM
-		)
-endif()
-
 
 #=============================================================================
 # uORB graph generation: add a custom target 'uorb_graph'
@@ -471,10 +488,10 @@ endif()
 add_custom_target(metadata_airframes
 	COMMAND ${CMAKE_COMMAND} -E make_directory ${PX4_BINARY_DIR}/docs
 	COMMAND ${PYTHON_EXECUTABLE} ${PX4_SOURCE_DIR}/Tools/px_process_airframes.py
-		-v -a ${PX4_SOURCE_DIR}//ROMFS/px4fmu_common/init.d
+		-v -a ${PX4_SOURCE_DIR}/ROMFS/px4fmu_common/init.d
 		--markdown ${PX4_BINARY_DIR}/docs/airframes.md
 	COMMAND ${PYTHON_EXECUTABLE} ${PX4_SOURCE_DIR}/Tools/px_process_airframes.py
-		-v -a ${PX4_SOURCE_DIR}//ROMFS/px4fmu_common/init.d
+		-v -a ${PX4_SOURCE_DIR}/ROMFS/px4fmu_common/init.d
 		--xml ${PX4_BINARY_DIR}/docs/airframes.xml
 	COMMENT "Generating full airframe metadata (markdown and xml)"
 	USES_TERMINAL

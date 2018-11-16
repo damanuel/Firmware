@@ -137,7 +137,7 @@ if(${OS} STREQUAL "nuttx")
 endif()
 
 # TODO: find a better way to do this
-if (NOT "${CONFIG}" MATCHES "px4io")
+if (NOT "${BOARD}" MATCHES "px4io")
 	add_library(parameters
 		${SRCS}
 		px4_parameters.c
